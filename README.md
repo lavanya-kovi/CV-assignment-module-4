@@ -1,12 +1,5 @@
 ---
-title: CSc 8830 Computer Vision
-emoji: 👁️
-colorFrom: indigo
-colorTo: blue
-sdk: streamlit
-sdk_version: 1.64.0
-app_file: Home.py
-pinned: false
+Title: CSc 8830 Computer Vision
 ---
 
 # CSc 8830 · Computer Vision — assignment portal
@@ -15,8 +8,6 @@ One public web app for every assignment. Each module is a page in the sidebar.
 
 - **Live demo:** https://huggingface.co/spaces/YOUR-USERNAME/cv-assignments
 - **Source:** https://github.com/YOUR-USERNAME/cv-assignments
-
-(The block at the top of this file is the Hugging Face Spaces configuration; GitHub ignores it.)
 
 ## Run locally
 
@@ -46,27 +37,7 @@ Home.py                               landing page
 pages/2_Module_2_Camera_Calibration.py Module 2 web demo
 pages/3_Module_3_Fourier_Blur.py      Module 3 web demo
 pages/4_Module_4_Human_Segmentation.py Module 4 web demo
-modules/m4_segmentation.py            Module 4 algorithms (also runnable from the command line)
-tools/sam2_generate_masks.py          offline SAM2 reference-mask generator (Colab)
-tools/sam2_boxes.json                 box prompts used for SAM2
-samples/rgb, samples/thermal          test images
-assets/sam2_masks/                    SAM2 masks, one PNG per sample (same file stem)
 ```
-
-## Module 4 — Human boundary segmentation
-
-**Q1: RGB camera.** GrabCut graph-cut segmentation initialised from a box around the person, a second pass with a centre-axis foreground hint, then morphological opening/closing, small-region removal, hole filling, and pixel-exact contours (`CHAIN_APPROX_NONE`).
-
-**Q2: Thermal camera.** Intensity channel (HSV value for pseudo-colour palettes), CLAHE, Gaussian blur, Otsu/Triangle/manual threshold, then morphology, area filter, and hole filling. An optional distance-transform watershed separates touching people.
-
-No machine-learning or deep-learning code is used in either pipeline.
-
-**Comparison with SAM2.** Reference masks are generated offline with SAM2 using the same box prompt. The app reports:
-
-- IoU, Dice, precision and recall;
-- boundary F-score within ±3 px;
-- a colour-coded disagreement map.
-
 ### Command-line use
 
 ```bash
@@ -79,16 +50,6 @@ python modules/m4_segmentation.py thermal samples/thermal/person.jpg --sam2 asse
 1. Put the images in `samples/rgb` and `samples/thermal`, and add one box per person to `tools/sam2_boxes.json`.
 2. Run `tools/sam2_generate_masks.py` in Colab. Instructions are at the top of that file.
 3. Commit the resulting `assets/sam2_masks/*.png`.
-
-## Deploying (Hugging Face Spaces)
-
-1. Create a Space at huggingface.co/new-space, choose the **Streamlit** SDK, and set visibility to **Public**.
-2. Push this repository to the Space. Hugging Face only accepts images through Git LFS, and `.gitattributes` already sets this up:
-   ```bash
-   git lfs install
-   git remote add space https://huggingface.co/spaces/YOUR-USERNAME/cv-assignments
-   git push space main
-   ```
    Use an access token with *write* scope as the password.
 3. Push to GitHub as well, with `git push origin main`, so graders can read the code.
 
