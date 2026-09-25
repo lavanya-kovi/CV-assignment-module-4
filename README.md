@@ -6,8 +6,7 @@ Title: CSc 8830 Computer Vision
 
 One public web app for every assignment. Each module is a page in the sidebar.
 
-- **Live demo:** https://huggingface.co/spaces/YOUR-USERNAME/cv-assignments
-- **Source:** https://github.com/YOUR-USERNAME/cv-assignments
+- **Live demo:** https://cv-assignments-7a1l.onrender.com
 
 ## Run locally
 
