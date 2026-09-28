@@ -1,27 +1,6 @@
 """
 CSc 8830 Computer Vision - Module 4: Human boundary segmentation (classical, no ML/DL)
 =====================================================================================
-
-README / HOW TO RUN
--------------------
-This file holds the algorithms only. It is used by the Streamlit page
-`pages/4_Module_4_Human_Segmentation.py`, but can also be run on its own:
-
-    # RGB image, person inside rectangle x,y,w,h (pixels)
-    python modules/m4_segmentation.py rgb  samples/rgb/person.jpg --rect 50 20 300 460
-
-    # Thermal image (white-hot by default)
-    python modules/m4_segmentation.py thermal samples/thermal/person.jpg
-
-    # Compare against a SAM2 mask (binary PNG, white = person)
-    python modules/m4_segmentation.py thermal img.jpg --sam2 assets/sam2_masks/img.png
-
-Outputs <name>_mask.png and <name>_overlay.png next to the input image and
-prints IoU / Dice / precision / recall / boundary-F when a SAM2 mask is given.
-
-Only OpenCV + NumPy image-processing functions are used (GrabCut is an
-iterative graph-cut energy minimisation with GMM colour models, not a learned
-model; Otsu, morphology, watershed and contours are purely classical).
 """
 
 from __future__ import annotations
@@ -125,19 +104,47 @@ def segment_rgb(img_bgr: np.ndarray, rect: tuple[int, int, int, int],
 
     gc_mask = np.zeros((sh, sw), np.uint8)
     bgd, fgd = np.zeros((1, 65), np.float64), np.zeros((1, 65), np.float64)
+    # GrabCut initialises its colour GMMs with k-means, which draws from
+    # OpenCV's global random generator. Fix the seed so the same image and box
+    # always give the same mask (reproducible results in the report and app).
+    cv2.setRNGSeed(0)
     cv2.grabCut(small, gc_mask, (x, y, rw, rh), bgd, fgd, iterations, cv2.GC_INIT_WITH_RECT)
 
     if fg_hint:
-        # Second pass: a thin vertical band on the box's centre axis (where a
-        # standing/sitting person's head-torso-legs line runs) is forced to
-        # sure-foreground. This stops the head or legs from being cut off
-        # when the neck/collar region is ambiguous.
-        cx0, cx1 = x + int(0.45 * rw), x + int(0.55 * rw)
-        cy0, cy1 = y + int(0.08 * rh), y + int(0.92 * rh)
-        band = gc_mask[cy0:cy1, cx0:cx1]
-        # Only force pixels GrabCut didn't already call sure background.
-        band[band != cv2.GC_BGD] = cv2.GC_FGD
-        cv2.grabCut(small, gc_mask, None, bgd, fgd, max(1, iterations // 2), cv2.GC_INIT_WITH_MASK)
+        # Gap-bridging pass. If the first pass split the person into pieces
+        # (e.g. head separated from torso by a dark collar), force a thin
+        # vertical band to sure-foreground, but ONLY between the topmost and
+        # bottommost first-pass foreground pixels on that band. The band is
+        # centred on the foreground's own centre of mass, not the box centre,
+        # so it never extends into the sky/ground around an off-centre person.
+        first_fg = (gc_mask == cv2.GC_FGD) | (gc_mask == cv2.GC_PR_FGD)
+        ys, xs = np.nonzero(first_fg)
+        n_parts = cv2.connectedComponents(first_fg.astype(np.uint8))[0] - 1
+        if len(xs) and n_parts > 1:
+            half = max(2, int(0.05 * rw))
+            cx = int(np.median(xs))
+            cx0, cx1 = max(x, cx - half), min(x + rw, cx + half)
+            rows = np.nonzero(first_fg[:, cx0:cx1].any(axis=1))[0]
+            if len(rows):
+                forced = np.zeros_like(first_fg)
+                forced[rows.min():rows.max() + 1, cx0:cx1] = True
+                forced &= ~first_fg & (gc_mask != cv2.GC_BGD)
+                gc_mask[forced] = cv2.GC_FGD
+                cv2.grabCut(small, gc_mask, None, bgd, fgd, max(1, iterations // 2),
+                            cv2.GC_INIT_WITH_MASK)
+                # The forced strip is only a constraint, not evidence: hand it
+                # back to the colour models, but keep that only if the person
+                # does not fall apart into more pieces again.
+                def parts(gm):
+                    # count only regions that survive the final clean-up
+                    fg = ((gm == cv2.GC_FGD) | (gm == cv2.GC_PR_FGD)).astype(np.uint8) * 255
+                    fg = keep_components(smooth_mask(fg, open_k, close_k), 0.01 * (rw * rh) / (sw * sh))
+                    return cv2.connectedComponents((fg > 0).astype(np.uint8))[0] - 1
+                bridged = gc_mask.copy()
+                gc_mask[forced] = cv2.GC_PR_FGD
+                cv2.grabCut(small, gc_mask, None, bgd.copy(), fgd.copy(), 1, cv2.GC_INIT_WITH_MASK)
+                if parts(gc_mask) > parts(bridged):
+                    gc_mask = bridged
 
     mask = np.where((gc_mask == cv2.GC_FGD) | (gc_mask == cv2.GC_PR_FGD), 255, 0).astype(np.uint8)
     mask = smooth_mask(mask, open_k, close_k)
